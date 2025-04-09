@@ -2,35 +2,44 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use App\enum\TaskStatusEnum;
 use App\Repository\TaskRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: TaskRepository::class)]
+
+#[ApiResource]
 class Task
 {
+    public function __construct()
+    {
+        $this->status = TaskStatusEnum::PENDING->value;
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
 
-    #[ORM\Column(length: 255)]
-    private ?string $title = null;
+    #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    private ?string $title = null; // Allow null values
 
-    #[ORM\Column(type: Types::TEXT)]
+    #[ORM\Column(type: Types::TEXT,nullable: true)]
     private ?string $description = null;
 
-    #[ORM\Column(length: 255)]
+    #[ORM\Column(type: 'string', length: 255)]
     private ?string $status = null;
 
-    #[ORM\Column(type: Types::DATE_MUTABLE)]
+    #[ORM\Column(type: Types::DATE_MUTABLE,nullable: true)]
     private ?\DateTimeInterface $dueDate = null;
 
-    #[ORM\Column]
+    #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $createdAt = null;
 
     #[ORM\ManyToOne(inversedBy: 'tasks')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: true)]
     private ?User $user = null;
 
     public function getId(): ?int
@@ -62,14 +71,23 @@ class Task
         return $this;
     }
 
-    public function getStatus(): ?string
+    // Getter to return the status as a TaskStatusEnum
+    public function getStatus(): ?TaskStatusEnum
     {
-        return $this->status;
+        // Return the status as an Enum object
+        return $this->status ? TaskStatusEnum::from($this->status) : null;
     }
 
-    public function setStatus(string $status): static
+    // Setter to set the status as a string or Enum
+    public function setStatus(TaskStatusEnum|string|null $status): self
     {
-        $this->status = $status;
+        if ($status instanceof TaskStatusEnum) {
+            $this->status = $status->value;  // Store the string value of the Enum
+        } elseif (is_string($status)) {
+            $this->status = $status;  // If it's a string, store it directly
+        } else {
+            $this->status = null;
+        }
 
         return $this;
     }
@@ -109,7 +127,7 @@ class Task
 
         return $this;
     }
-    public function setCreatedAtValue()
+    public function setCreatedAtValue(): void
     {
         // If createdAt is not set, set it to current datetime
         if ($this->createdAt === null) {
