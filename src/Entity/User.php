@@ -3,17 +3,41 @@
 namespace App\Entity;
 
 use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Post;
+use ApiPlatform\Metadata\Put;
+use App\DTO\PasswordUpdateDto;
 use App\Repository\UserRepository;
+use App\State\PasswordUpdateProcessor;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Serializer\Annotation\Groups;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\UniqueConstraint(name: 'UNIQ_IDENTIFIER_EMAIL', fields: ['email'])]
 
-#[ApiResource]
+#[ApiResource(
+    operations:[
+        new GetCollection(), // GET /api/users
+        new Post(),          // POST /api/users
+        new Get(),           // GET /api/users/{id}
+        new Put(),           // PUT /api/users/{id}
+        new Delete(),        // DELETE /api/users/{id}
+
+        new Post(
+        uriTemplate: '/user/{id}/passwordUpdate',
+        denormalizationContext: ['groups' => ['password:update']],
+        security: 'object.getId() == user.getId()',
+        input: PasswordUpdateDto::class, // user can only update their own password
+        name: 'update_password',
+        processor: PasswordUpdateProcessor::class
+    )]
+)]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[ORM\Id]
@@ -34,6 +58,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      * @var string The hashed password
      */
     #[ORM\Column]
+    #[Groups('password:update')]
     private ?string $password = null;
 
     /**
