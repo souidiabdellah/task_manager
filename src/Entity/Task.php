@@ -7,6 +7,7 @@ use App\enum\TaskStatusEnum;
 use App\Repository\TaskRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: TaskRepository::class)]
 
@@ -24,22 +25,25 @@ class Task
     private ?int $id = null;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\NotBlank(message: 'Title is required')]
     private ?string $title = null; // Allow null values
 
     #[ORM\Column(type: Types::TEXT,nullable: true)]
+    #[Assert\NotBlank(message: 'Description is required')]
     private ?string $description = null;
 
     #[ORM\Column(type: 'string', length: 255)]
     private ?string $status = null;
 
     #[ORM\Column(type: Types::DATE_MUTABLE,nullable: true)]
+    #[Assert\NotBlank(message: 'DueDate is required')]
     private ?\DateTimeInterface $dueDate = null;
 
-    #[ORM\Column(nullable: true)]
+    #[ORM\Column(nullable: false)]
     private ?\DateTimeImmutable $createdAt = null;
 
     #[ORM\ManyToOne(inversedBy: 'tasks')]
-    #[ORM\JoinColumn(nullable: true)]
+    #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
     public function getId(): ?int
