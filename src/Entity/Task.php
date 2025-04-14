@@ -3,47 +3,96 @@
 namespace App\Entity;
 
 use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post;
 use App\enum\TaskStatusEnum;
 use App\Repository\TaskRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Context;
+use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: TaskRepository::class)]
-
-#[ApiResource]
+#[ORM\HasLifecycleCallbacks]
+#[ApiResource(
+    operations: [
+        new Post(
+            denormalizationContext: ['groups' => ['task:write']],
+            validationContext: ['groups' => ['Default', 'task:creation']]
+        ),
+        new GetCollection(
+            normalizationContext: ['groups' => ['task:read']]
+        ),
+        new Get(
+            normalizationContext: ['groups' => ['task:read', 'task:item:get']]
+        ),
+        new Patch(
+            denormalizationContext: ['groups' => ['task:write']],
+            validationContext: ['groups' => ['Default', 'task:update']]
+        ),
+        new Delete()
+    ],
+    normalizationContext: ['groups' => ['task:read']],
+    denormalizationContext: ['groups' => ['task:write']]
+)]
 class Task
 {
     public function __construct()
     {
         $this->status = TaskStatusEnum::PENDING->value;
+        $this->createdAt = new \DateTimeImmutable();
     }
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['task:read'])]
     private ?int $id = null;
 
-    #[ORM\Column(type: 'string', length: 255, nullable: true)]
-    #[Assert\NotBlank(message: 'Title is required')]
-    private ?string $title = null; // Allow null values
+    #[ORM\Column(type: 'string', length: 255)]
+    #[Assert\NotBlank(groups: ['task:creation'])]
+    #[Assert\Length(
+        min: 3,
+        max: 255,
+        minMessage: 'Title must be at least {{ limit }} characters long',
+        maxMessage: 'Title cannot be longer than {{ limit }} characters',
+        groups: ['task:creation', 'task:update']
+    )]
+    #[Groups(['task:read', 'task:write'])]
+    private string $title;
 
-    #[ORM\Column(type: Types::TEXT,nullable: true)]
-    #[Assert\NotBlank(message: 'Description is required')]
-    private ?string $description = null;
+    #[ORM\Column(type: Types::TEXT)]
+    #[Assert\NotBlank(groups: ['task:creation'])]
+    #[Groups(['task:read', 'task:write'])]
+    private string $description;
 
     #[ORM\Column(type: 'string', length: 255)]
-    private ?string $status = null;
+    #[Groups(['task:read', 'task:write'])]
+    private string $status;
 
-    #[ORM\Column(type: Types::DATE_MUTABLE,nullable: true)]
-    #[Assert\NotBlank(message: 'DueDate is required')]
+    #[ORM\Column(type: Types::DATE_MUTABLE)]
+    #[Assert\NotBlank(groups: ['task:creation'])]
+    #[Assert\GreaterThanOrEqual(
+        'today',
+        message: 'Due date must be today or in the future',
+        groups: ['task:creation', 'task:update']
+    )]
+    #[Groups(['task:read', 'task:write'])]
+    #[Context([DateTimeNormalizer::FORMAT_KEY => 'Y-m-d'])]
     private ?\DateTimeInterface $dueDate = null;
 
     #[ORM\Column(nullable: false)]
-    private ?\DateTimeImmutable $createdAt = null;
+    #[Groups(['task:read'])]
+    private \DateTimeImmutable $createdAt;
 
     #[ORM\ManyToOne(inversedBy: 'tasks')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: true)]
+    #[Groups(['task:read', 'task:write'])]
     private ?User $user = null;
 
     public function getId(): ?int
@@ -51,7 +100,7 @@ class Task
         return $this->id;
     }
 
-    public function getTitle(): ?string
+    public function getTitle(): string
     {
         return $this->title;
     }
@@ -59,11 +108,10 @@ class Task
     public function setTitle(string $title): static
     {
         $this->title = $title;
-
         return $this;
     }
 
-    public function getDescription(): ?string
+    public function getDescription(): string
     {
         return $this->description;
     }
@@ -71,28 +119,20 @@ class Task
     public function setDescription(string $description): static
     {
         $this->description = $description;
-
         return $this;
     }
 
-    // Getter to return the status as a TaskStatusEnum
-    public function getStatus(): ?TaskStatusEnum
+    public function getStatus(): TaskStatusEnum
     {
-        // Return the status as an Enum object
-        return $this->status ? TaskStatusEnum::from($this->status) : null;
+        return TaskStatusEnum::from($this->status);
     }
 
-    // Setter to set the status as a string or Enum
-    public function setStatus(TaskStatusEnum|string|null $status): self
+    public function setStatus(TaskStatusEnum|string $status): self
     {
-        if ($status instanceof TaskStatusEnum) {
-            $this->status = $status->value;  // Store the string value of the Enum
-        } elseif (is_string($status)) {
-            $this->status = $status;  // If it's a string, store it directly
-        } else {
-            $this->status = null;
+        if (empty($status)) {
+            throw new \InvalidArgumentException('Status cannot be empty');
         }
-
+        $this->status = $status instanceof TaskStatusEnum ? $status->value : $status;
         return $this;
     }
 
@@ -104,11 +144,10 @@ class Task
     public function setDueDate(\DateTimeInterface $dueDate): static
     {
         $this->dueDate = $dueDate;
-
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -116,7 +155,6 @@ class Task
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
-
         return $this;
     }
 
@@ -128,13 +166,16 @@ class Task
     public function setUser(?User $user): static
     {
         $this->user = $user;
-
         return $this;
     }
-    public function setCreatedAtValue(): void
+
+    #[ORM\PrePersist]
+    private function ensureInitialization(): void
     {
-        // If createdAt is not set, set it to current datetime
-        if ($this->createdAt === null) {
+        if (!isset($this->status)) {
+            $this->status = TaskStatusEnum::PENDING->value;
+        }
+        if (!isset($this->createdAt)) {
             $this->createdAt = new \DateTimeImmutable();
         }
     }
